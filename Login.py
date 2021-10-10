@@ -26,8 +26,13 @@ CORS(app)
 
 PORT = 8999
 
+load_dotenv()
 
-con = psycopg2.connect()
+con = psycopg2.connect(s.getenv('INFLUX_HOST'), 
+                        int(os.getenv('INFLUX_PORT')),
+                        os.getenv('INFLUX_USER'),
+                        os.getenv('INFLUX_PASS'), 
+                        os.getenv('INFLUX_DB'))
 con.autocommit = True
 
 
