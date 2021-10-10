@@ -28,11 +28,11 @@ PORT = 8999
 
 load_dotenv()
 
-con = psycopg2.connect(s.getenv('INFLUX_HOST'), 
-                        int(os.getenv('INFLUX_PORT')),
-                        os.getenv('INFLUX_USER'),
-                        os.getenv('INFLUX_PASS'), 
-                        os.getenv('INFLUX_DB'))
+con = psycopg2.connect(host=os.getenv('POSTGRESQL_HOST'), 
+                        port=os.getenv('POSTGRESQL_PORT'), 
+                        user=os.getenv('POSTGRESQL_USER'),  
+                        password=os.getenv('POSTGRESQL_PASS'), 
+                        dbname=os.getenv('POSTGRESQL_DB'))
 con.autocommit = True
 
 
