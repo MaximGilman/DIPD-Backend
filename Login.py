@@ -51,29 +51,7 @@ def GetUserById(id):
 # Метод для входа пользователя. Возвращает данные о пользователе по логину/паролю
 @app.route('/user/login', methods=['POST'])
 def LoginUser():
-
-    inputs = request.get_json()
-
-    if ('login' not in inputs):
-        return ({'status': 'data_error', 'message': 'login expected'}, 400)
-
-    if ('password' not in inputs):
-        return ({'status': 'data_error', 'message': 'password expected'}, 400)
-
-    login = inputs['login']
-    password = inputs['password']
-    with con:
-        cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
-        query = f"SELECT key FROM public.log_data WHERE login = \'{login}\' AND password=\'{password}\'"
-        cur.execute(query)
-        loginKey = cur.fetchone()
-        if(loginKey == None):
-            return ({'status': 'data_not_found', 'message': 'not found such user'}, 404)
-        else:
-            query = f"SELECT * FROM public.user WHERE login_id = {loginKey['key']}"
-            cur.execute(query)
-            user = cur.fetchone()
-            return json.dumps(user)
+    return json.dumps(GetUser())
 
 # Метод получения пользователя
 def GetUser():
