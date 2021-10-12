@@ -6,6 +6,7 @@
 #pip3 install psycopg2
 #pip3 install flask-cors
 
+import dotenv
 import psycopg2
 import psycopg2.extras
 import http.server
@@ -25,9 +26,7 @@ app = Flask(__name__)
 CORS(app)
 
 PORT = 8999
-
-load_dotenv("connect.env")
-
+load_dotenv()
 con = psycopg2.connect(host=os.getenv('POSTGRESQL_HOST'), 
                         port=os.getenv('POSTGRESQL_PORT'), 
                         user=os.getenv('POSTGRESQL_USER'),  
