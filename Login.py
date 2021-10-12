@@ -26,6 +26,7 @@ CORS(app)
 
 PORT = 8999
 
+load_dotenv("connect.env")
 
 con = psycopg2.connect(host=os.getenv('POSTGRESQL_HOST'), 
                         port=os.getenv('POSTGRESQL_PORT'), 
@@ -73,7 +74,52 @@ def LoginUser():
             query = f"SELECT * FROM public.user WHERE login_id = {loginKey['key']}"
             cur.execute(query)
             user = cur.fetchone()
-            return user #убрал json.dumps(user), т.к. из-за этого не мог получать данные user
+            return json.dumps(user)
+
+# Метод получения пользователя
+def GetUser():
+
+    inputs = request.get_json()
+
+    if ('login' not in inputs):
+        return ({'status': 'data_error', 'message': 'login expected'}, 400)
+
+    if ('password' not in inputs):
+        return ({'status': 'data_error', 'message': 'password expected'}, 400)
+
+    login = inputs['login']
+    password = inputs['password']
+    with con:
+        cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+        query = f"SELECT key FROM public.log_data WHERE login = \'{login}\' AND password=\'{password}\'"
+        cur.execute(query)
+        loginKey = cur.fetchone()
+        if(loginKey == None):
+            return ({'status': 'data_not_found', 'message': 'not found such user'}, 404)
+        else:
+            query = f"SELECT * FROM public.user WHERE login_id = {loginKey['key']}"
+            cur.execute(query)
+            user = cur.fetchone()
+            return user 
+
+# Проверка на существование логина в таблице log_data
+def CheckLogin():
+
+    inputs = request.get_json()
+
+    if ('login' not in inputs):
+        return ({'status': 'data_error', 'message': 'login expected'}, 400)
+
+    login = inputs['login']
+
+    with con:
+        cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+        query = f"SELECT key FROM public.log_data WHERE login = \'{login}\'"
+        cur.execute(query)
+
+        loginKey = cur.fetchone()
+
+        return json.dumps(loginKey)
 
 # Метод обновления существующей записи
 @app.route('/user/update', methods=['POST'])
@@ -145,10 +191,11 @@ def CreateUser():
         if requiresInput[input] == "":
             return ({'status': 'data_error', 'message': f'value for {input} expected'}, 400)
 
-    userCheck = LoginUser() #пытаемся найти пользователя по логину и паролю
+    userCheck = GetUser() #пытаемся найти пользователя по логину и паролю
 
-    # Если userCheck не нашёл существующей записи о пользователе 
-    if "key" not in userCheck:
+    loginCheck = CheckLogin()
+    # Если userCheck не нашёл существующей записи о пользователе и loginCheck не нашёл логин  
+    if ("key" not in userCheck) and (loginCheck == "null"):
         with con:
             cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
             query = f"INSERT INTO public.log_data (login, password) VALUES (\'{login}\', \'{password}\')"
@@ -183,7 +230,7 @@ def DeleteUser():
         if param not in inputs:
             return ({'status': 'data_error', 'message': f'{param} expected'}, 400)
     
-    userCheck = LoginUser()
+    userCheck = GetUser()
 
     # Проверка, что запись есть в log_data
     if "key" in userCheck:
@@ -226,20 +273,5 @@ def server():
 
 server()
 
-# [POST] Удаление пользователя
-# Вх. параметры: Ключ, Login, Password в формате JSON
-# {
-#   key: 1,
-#   password: "",
-#   login: ""
-# }
-## Проверить, что пользователь с таким ключем существует и сохранить все поля в переменную User
-## Получить запись из таблицы log_data, в 
-### SELECT * FROM log_data where key = {значение из User.Login_Id}
-#### DELETE - запрос
-
 # Logout пользователя - делать не нужно, сделаем со стороны клиента
 # Опубликовать это на стенде - делать не нужно, сделаем это, когда будет готова реализация
-
-
-#maxim / password

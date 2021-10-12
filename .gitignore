@@ -137,3 +137,4 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 doc_2021-10-10_18-11-35.env
+connect.env
