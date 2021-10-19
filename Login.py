@@ -1,11 +1,4 @@
-# Для всех недостающих пакетов пропиши команду
-# pip3 install {Имя пакета}
-
-## Вот список базовых, которых точно нет на "чистом ПК"
-#pip3 install Flask
-#pip3 install psycopg2
-#pip3 install flask-cors
-
+import dotenv
 import psycopg2
 import psycopg2.extras
 import http.server
@@ -54,12 +47,11 @@ def GetUserById(id):
 def LoginUser():
 
     inputs = request.get_json()
-
-    if ('login' not in inputs):
-        return ({'status': 'data_error', 'message': 'login expected'}, 400)
-
-    if ('password' not in inputs):
-        return ({'status': 'data_error', 'message': 'password expected'}, 400)
+    requires = ["lohin", "password"]
+    
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
 
     login = inputs['login']
     password = inputs['password']
@@ -81,11 +73,11 @@ def GetUser():
 
     inputs = request.get_json()
 
-    if ('login' not in inputs):
-        return ({'status': 'data_error', 'message': 'login expected'}, 400)
+    requires = ["login", "password"]
 
-    if ('password' not in inputs):
-        return ({'status': 'data_error', 'message': 'password expected'}, 400)
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
 
     login = inputs['login']
     password = inputs['password']
@@ -102,6 +94,12 @@ def GetUser():
             user = cur.fetchone()
             return user 
 
+# Проверка входных данных (json)
+def CheckInputs(inputs, requires):
+    for param in requires:
+            if param not in inputs:
+                return ({'status': 'data_error', 'message': f'{param} expected'}, 400)
+    return 'passed'
 # Проверка на существование логина в таблице log_data
 def CheckLogin():
 
@@ -175,9 +173,9 @@ def CreateUser():
 
     requires = ['name', 'password', 'login'] # обязательные параметры запроса
 
-    for param in requires:
-        if param not in inputs:
-            return ({'status': 'data_error', 'message': f'{param} expected'}, 400)
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
 
     name = inputs['name']
     password = inputs['password']
@@ -214,45 +212,96 @@ def CreateUser():
         return ({'status': 'data_found', 'message': 'there`s already user in tb user'}, 412)
 
 # Метод удаления пользователя
-
 @app.route('/user/delete', methods=['POST'])
 def DeleteUser():
 
     inputs = request.get_json() # получаем данные из запроса
 
     key = inputs['key']
-    password = inputs['password']
-    login = inputs['login']
 
     requires = ['key', 'password', 'login'] # обязательные параметры запроса
 
-    for param in requires:
-        if param not in inputs:
-            return ({'status': 'data_error', 'message': f'{param} expected'}, 400)
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
     
     userCheck = GetUser()
 
     # Проверка, что запись есть в log_data
     if "key" in userCheck:
         loginKey = userCheck["key"]
-
         # Проверка, что запись есть в user
         if GetUserById(loginKey) != "null":
+            key = GetUser()['login_id']
             with con:
                 cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
-                query = f"SELECT * FROM public.log_data WHERE key = \'{key}\'"
-                cur.execute(query)
-                user = cur.fetchone() # Сохранили в User
+                #query = f"SELECT * FROM public.log_data WHERE key = \'{key}\'"
+                #cur.execute(query)
                 
-                query = f"DELETE FROM public.log_data WHERE key = \'{key}\'"
+                query = f"DELETE FROM public.profile_pic WHERE user_key = \'{loginKey}\'"
                 cur.execute(query)
 
+                query = f"DELETE FROM public.user WHERE key = \'{loginKey}\'"
+                cur.execute(query)
+
+                query = f"DELETE FROM public.log_data WHERE key = \'{key}\'"
+                cur.execute(query)
+                
                 return{'status': 'OK', 'message': 'user deleted'}
                 
         else:
             return ({'status': 'data_error', 'message': 'no such user in tb user'}, 400)    
     else:
         return ({'status': 'data_error', 'message': 'no such user in tb log_data'}, 400)
+
+
+# Метод добавления массива байт в табилцу profile_pic. Если запись существет - удалить и создать 
+@app.route('/image/set', methods=['POST'])
+def SetImage():
+    inputs = request.get_json() # получаем данные из запроса
+
+    requires = ['key', 'bytearray'] # обязательные параметры запроса
+
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
+
+    key = inputs['key']
+    # массив байт
+    imgbyte = inputs['bytearray']
+    # проверка, что пользователь существует
+    if GetUserById(key) != "null":
+        with con:
+            cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+            query = f"SELECT * FROM public.profile_pic WHERE user_key = {key}"
+            cur.execute(query)
+            # если нашлась запись
+            if cur.fetchone() != 'null':
+                query = f"DELETE FROM public.profile_pic WHERE user_key = \'{key}\'"
+                cur.execute(query)
+                query = f"INSERT INTO public.profile_pic (user_key, image) VALUES (\'{key}\', \'{imgbyte}\')"
+                cur.execute(query)
+                return {"status":"check"}
+            else:
+                query = f"INSERT INTO public.profile_pic (user_key, image) VALUES (\'{key}\', \'{imgbyte}\')"
+                cur.execute(query)
+                return {"status":"check"}
+    else:
+        return ({'status': 'data_error', 'message': 'no such user in tb user'}, 400)
+
+# Метод получения массива байт (фото профиля)
+@app.route('/image/<id>', methods=['GET'])
+def GetImageById(id):
+    with con:
+        cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+        query = f"SELECT image FROM public.profile_pic WHERE user_key = {id}"
+        cur.execute(query)
+        # объект memoryview в tuple
+        mview = tuple(cur.fetchone().items())
+        # memoryview в bytes
+        new_bin_data=bytes(mview[0][1])
+        #возвращает массив байт
+        return new_bin_data
 
 # Метод получения всех пользователей
 @app.route('/users/all', methods=['GET'])
@@ -271,7 +320,10 @@ def server():
     global PORT   
     app.run(host="0.0.0.0", port=PORT)
 
+
 server()
+
+
 
 # Logout пользователя - делать не нужно, сделаем со стороны клиента
 # Опубликовать это на стенде - делать не нужно, сделаем это, когда будет готова реализация
