@@ -47,7 +47,7 @@ def GetUserById(id):
 def LoginUser():
 
     inputs = request.get_json()
-    requires = ["lohin", "password"]
+    requires = ["login", "password"]
     
     check = CheckInputs(inputs, requires)
     if check != 'passed':
@@ -125,7 +125,7 @@ def UpdateUser():
 
     inputs = request.get_json() # получаем данные из запроса
 
-    requires = ['key', 'name', 'password', 'login'] # обязательные параметры запроса
+    requires = ['key', 'name', 'password', 'login', 'email'] # обязательные параметры запроса
 
     for param in requires:
         if param not in inputs:
@@ -135,6 +135,7 @@ def UpdateUser():
     name = inputs['name']
     password = inputs['password']
     login = inputs['login']
+    email = inputs['email']
 
     with con:
 
@@ -148,7 +149,7 @@ def UpdateUser():
 
         if user != 'null':
             loginKey = userCopy["login_id"] #логин_ид 
-            query = f"UPDATE public.user SET name = \'{name}\' WHERE key =\'{key}\'" #обновляем имя пользователя
+            query = f"UPDATE public.user SET (name, email) = (\'{name}\', \'{email}\') WHERE key =\'{key}\'" #обновляем имя и почту пользователя
             cur.execute(query)
 
             query = f"SELECT * FROM public.log_data WHERE key = \'{loginKey}\'" #в таблице log_data собираем поля по ид
@@ -171,7 +172,7 @@ def CreateUser():
 
     inputs = request.get_json() # получаем данные из запроса
 
-    requires = ['name', 'password', 'login'] # обязательные параметры запроса
+    requires = ['name', 'password', 'login', 'email'] # обязательные параметры запроса
 
     check = CheckInputs(inputs, requires)
     if check != 'passed':
@@ -180,8 +181,9 @@ def CreateUser():
     name = inputs['name']
     password = inputs['password']
     login = inputs['login']
+    email = inputs['email']
     
-    requiresInput = dict(zip(['name', 'password', 'login'],[name, password, login]))
+    requiresInput = dict(zip(['name', 'password', 'login', 'email'],[name, password, login, email]))
 
     # Сообщение об отсутствии заполнения данных. Пока что выводит только для одного поля
     # Если отсутствует больше 1 поля, выводит сообщение только про первое прочитанное
@@ -205,8 +207,9 @@ def CreateUser():
             loginKey = cur.fetchone()["key"]
             
             # Создаём запись в user
-            query = f"INSERT INTO public.user (name, login_id) VALUES (\'{name}\', \'{loginKey}\')"
+            query = f"INSERT INTO public.user (name, login_id, email) VALUES (\'{name}\', \'{loginKey}\', \'{email}\')"
             cur.execute(query)
+
             return {"status":"check"}
     else:
         return ({'status': 'data_found', 'message': 'there`s already user in tb user'}, 412)
@@ -235,14 +238,11 @@ def DeleteUser():
             key = GetUser()['login_id']
             with con:
                 cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
-                #query = f"SELECT * FROM public.log_data WHERE key = \'{key}\'"
+                #query = f"DELETE FROM public.profile_pic WHERE user_key = \'{loginKey}\'"
                 #cur.execute(query)
-                
-                query = f"DELETE FROM public.profile_pic WHERE user_key = \'{loginKey}\'"
-                cur.execute(query)
 
-                query = f"DELETE FROM public.user WHERE key = \'{loginKey}\'"
-                cur.execute(query)
+                #query = f"DELETE FROM public.user WHERE key = \'{loginKey}\'"
+                #ur.execute(query)
 
                 query = f"DELETE FROM public.log_data WHERE key = \'{key}\'"
                 cur.execute(query)
