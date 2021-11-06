@@ -44,7 +44,6 @@ def GetUserById(id):
 # Метод для входа пользователя. Возвращает данные о пользователе по логину/паролю
 @app.route('/user/login', methods=['POST'])
 def LoginUser():
-
     inputs = request.get_json()
     requires = ["login", "password"]
     

@@ -1,0 +1,16 @@
+[Unit]
+Description=DIPD service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/dipd/scripts/start.sh
+ExecStop=/bin/bash /home/dipd/scripts/stop.sh
+Restart=always
+RestartSec=5
+TimeoutSec=60
+RuntimeMaxSec=infinity
+PIDFile=/tmp/nome_script.pid
+
+[Install]
+WantedBy=multi-user.target
