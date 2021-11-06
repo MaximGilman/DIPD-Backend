@@ -1,43 +1,36 @@
-# Для всех недостающих пакетов пропиши команду
-# pip3 install {Имя пакета}
-
-## Вот список базовых, которых точно нет на "чистом ПК"
-#pip3 install Flask
-#pip3 install psycopg2
-#pip3 install flask-cors
-
-import dotenv
 import psycopg2
 import psycopg2.extras
-import http.server
-import socketserver
-from threading import Thread
-import time
-import sys
 import json
-import time
-from flask import Flask
+from flask import Flask, request
 from flask import request
+from oauthlib.oauth2 import WebApplicationClient
+import requests
 from flask_cors import CORS
 import os
+from user import User
 from dotenv import load_dotenv
 
 app = Flask(__name__)
 CORS(app)
+app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(24)
 
 PORT = 8999
+
 load_dotenv()
-con = psycopg2.connect(host=os.getenv('POSTGRESQL_HOST'), 
-                        port=os.getenv('POSTGRESQL_PORT'), 
-                        user=os.getenv('POSTGRESQL_USER'),  
-                        password=os.getenv('POSTGRESQL_PASS'), 
-                        dbname=os.getenv('POSTGRESQL_DB'))
+
+con = psycopg2.connect(host=os.getenv("POSTGRESQL_HOST"), 
+                        port=os.getenv("POSTGRESQL_PORT"), 
+                        user=os.getenv("POSTGRESQL_USER"),  
+                        password=os.getenv("POSTGRESQL_PASS"), 
+                        dbname=os.getenv("POSTGRESQL_DB"))
 con.autocommit = True
 
+#fix it..
+exec(open(r'C:\Users\misa5\Desktop\work\DIPD-Backend\googleLogin.py').read())
 
 @app.route('/ping', methods=['GET'])
 def ping():
-    return {'status': 'working'}
+    return json.dumps({'status': 'working'})
 
 # Метод получения данных о пользователе
 @app.route('/user/<id>', methods=['GET'])
@@ -51,18 +44,12 @@ def GetUserById(id):
 # Метод для входа пользователя. Возвращает данные о пользователе по логину/паролю
 @app.route('/user/login', methods=['POST'])
 def LoginUser():
-    return json.dumps(GetUser())
-
-# Метод получения пользователя
-def GetUser():
-
     inputs = request.get_json()
-
-    if ('login' not in inputs):
-        return ({'status': 'data_error', 'message': 'login expected'}, 400)
-
-    if ('password' not in inputs):
-        return ({'status': 'data_error', 'message': 'password expected'}, 400)
+    requires = ["login", "password"]
+    
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
 
     login = inputs['login']
     password = inputs['password']
@@ -72,12 +59,45 @@ def GetUser():
         cur.execute(query)
         loginKey = cur.fetchone()
         if(loginKey == None):
-            return ({'status': 'data_not_found', 'message': 'not found such user'}, 404)
+            return (json.dumps({'status': 'data_not_found', 'message': 'not found such user'}), 404)
+        else:
+            query = f"SELECT * FROM public.user WHERE login_id = {loginKey['key']}"
+            cur.execute(query)
+            user = cur.fetchone()
+            return json.dumps(user)
+
+# Метод получения пользователя
+def GetUser():
+
+    inputs = request.get_json()
+
+    requires = ["login", "password"]
+
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
+
+    login = inputs['login']
+    password = inputs['password']
+    with con:
+        cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+        query = f"SELECT key FROM public.log_data WHERE login = \'{login}\' AND password=\'{password}\'"
+        cur.execute(query)
+        loginKey = cur.fetchone()
+        if(loginKey == None):
+            return (json.dumps({'status': 'data_not_found', 'message': 'not found such user'}), 404)
         else:
             query = f"SELECT * FROM public.user WHERE login_id = {loginKey['key']}"
             cur.execute(query)
             user = cur.fetchone()
             return user 
+
+# Проверка входных данных (json)
+def CheckInputs(inputs, requires):
+    for param in requires:
+            if param not in inputs:
+                return (json.dumps({'status': 'data_error', 'message': f'{param} expected'}), 400)
+    return 'passed'
 
 # Проверка на существование логина в таблице log_data
 def CheckLogin():
@@ -85,7 +105,7 @@ def CheckLogin():
     inputs = request.get_json()
 
     if ('login' not in inputs):
-        return ({'status': 'data_error', 'message': 'login expected'}, 400)
+        return (json.dumps({'status': 'data_error', 'message': 'login expected'}), 400)
 
     login = inputs['login']
 
@@ -104,16 +124,17 @@ def UpdateUser():
 
     inputs = request.get_json() # получаем данные из запроса
 
-    requires = ['key', 'name', 'password', 'login'] # обязательные параметры запроса
+    requires = ['key', 'name', 'password', 'login', 'email'] # обязательные параметры запроса
 
     for param in requires:
         if param not in inputs:
-            return ({'status': 'data_error', 'message': f'{param} expected'}, 400)
+            return (json.dumps({'status': 'data_error', 'message': f'{param} expected'}), 400)
 
     key = inputs['key']
     name = inputs['name']
     password = inputs['password']
     login = inputs['login']
+    email = inputs['email']
 
     with con:
 
@@ -127,7 +148,7 @@ def UpdateUser():
 
         if user != 'null':
             loginKey = userCopy["login_id"] #логин_ид 
-            query = f"UPDATE public.user SET name = \'{name}\' WHERE key =\'{key}\'" #обновляем имя пользователя
+            query = f"UPDATE public.user SET (name, email) = (\'{name}\', \'{email}\') WHERE key =\'{key}\'" #обновляем имя и почту пользователя
             cur.execute(query)
 
             query = f"SELECT * FROM public.log_data WHERE key = \'{loginKey}\'" #в таблице log_data собираем поля по ид
@@ -138,11 +159,11 @@ def UpdateUser():
             if user != 'null':
                 query = f"UPDATE public.log_data SET (login, password) =  (\'{login}\', \'{password}\') WHERE key =\'{loginKey}\'"
                 cur.execute(query)
-                return {"status":"OK"}
+                return json.dumps({"status":"OK"})
             else:
-                return ({'status': 'data_not_found', 'message': 'not found such user in log_data'}, 404)
+                return (json.dumps({'status': 'data_not_found', 'message': 'not found such user in log_data'}), 404)
         else:
-            return ({'status': 'data_not_found', 'message': 'not found such user in user'}, 404)
+            return (json.dumps({'status': 'data_not_found', 'message': 'not found such user in user'}), 404)
 
 # Метод создания записи о пользователе
 @app.route('/user/create', methods=['POST'])
@@ -150,23 +171,24 @@ def CreateUser():
 
     inputs = request.get_json() # получаем данные из запроса
 
-    requires = ['name', 'password', 'login'] # обязательные параметры запроса
+    requires = ['name', 'password', 'login', 'email'] # обязательные параметры запроса
 
-    for param in requires:
-        if param not in inputs:
-            return ({'status': 'data_error', 'message': f'{param} expected'}, 400)
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
 
     name = inputs['name']
     password = inputs['password']
     login = inputs['login']
-    
-    requiresInput = dict(zip(['name', 'password', 'login'],[name, password, login]))
+    email = inputs['email']
+
+    requiresInput = dict(zip(['name', 'password', 'login', 'email'],[name, password, login, email]))
 
     # Сообщение об отсутствии заполнения данных. Пока что выводит только для одного поля
     # Если отсутствует больше 1 поля, выводит сообщение только про первое прочитанное
     for input in requiresInput:
         if requiresInput[input] == "":
-            return ({'status': 'data_error', 'message': f'value for {input} expected'}, 400)
+            return (json.dumps({'status': 'data_error', 'message': f'value for {input} expected'}), 400)
 
     userCheck = GetUser() #пытаемся найти пользователя по логину и паролю
 
@@ -182,54 +204,98 @@ def CreateUser():
             query = f"SELECT key FROM public.log_data WHERE (login, password) = (\'{login}\', \'{password}\')"
             cur.execute(query)
             loginKey = cur.fetchone()["key"]
-            
+
             # Создаём запись в user
-            query = f"INSERT INTO public.user (name, login_id) VALUES (\'{name}\', \'{loginKey}\')"
+            query = f"INSERT INTO public.user (name, login_id, email) VALUES (\'{name}\', \'{loginKey}\', \'{email}\')"
             cur.execute(query)
-            return {"status":"check"}
+
+            return json.dumps({"status":"check"})
     else:
-        return ({'status': 'data_found', 'message': 'there`s already user in tb user'}, 412)
+        return (json.dumps({'status': 'data_found', 'message': 'there`s already user in tb user'}), 412)
 
 # Метод удаления пользователя
-
 @app.route('/user/delete', methods=['POST'])
 def DeleteUser():
 
     inputs = request.get_json() # получаем данные из запроса
 
-    key = inputs['key']
-    password = inputs['password']
-    login = inputs['login']
-
     requires = ['key', 'password', 'login'] # обязательные параметры запроса
 
-    for param in requires:
-        if param not in inputs:
-            return ({'status': 'data_error', 'message': f'{param} expected'}, 400)
-    
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
+
+    key = inputs['key']
+
     userCheck = GetUser()
 
     # Проверка, что запись есть в log_data
     if "key" in userCheck:
         loginKey = userCheck["key"]
-
         # Проверка, что запись есть в user
         if GetUserById(loginKey) != "null":
+            key = GetUser()['login_id']
             with con:
                 cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
-                query = f"SELECT * FROM public.log_data WHERE key = \'{key}\'"
-                cur.execute(query)
-                user = cur.fetchone() # Сохранили в User
-                
+
                 query = f"DELETE FROM public.log_data WHERE key = \'{key}\'"
                 cur.execute(query)
-
-                return{'status': 'OK', 'message': 'user deleted'}
+                
+                return json.dumps({'status': 'OK', 'message': 'user deleted'})
                 
         else:
-            return ({'status': 'data_error', 'message': 'no such user in tb user'}, 400)    
+            return (json.dumps({'status': 'data_error', 'message': 'no such user in tb user'}), 400)    
     else:
-        return ({'status': 'data_error', 'message': 'no such user in tb log_data'}, 400)
+        return (json.dumps({'status': 'data_error', 'message': 'no such user in tb log_data'}), 400)
+
+
+# Метод добавления массива байт в табилцу profile_pic. Если запись существет - удалить и создать 
+@app.route('/image/set', methods=['POST'])
+def SetImage():
+    inputs = request.get_json() # получаем данные из запроса
+
+    requires = ['key', 'bytearray'] # обязательные параметры запроса
+
+    check = CheckInputs(inputs, requires)
+    if check != 'passed':
+        return check
+
+    key = inputs['key']
+    # массив байт
+    imgbyte = inputs['bytearray']
+    # проверка, что пользователь существует
+    if GetUserById(key) != "null":
+        with con:
+            cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+            query = f"SELECT * FROM public.profile_pic WHERE user_key = {key}"
+            cur.execute(query)
+            # если нашлась запись
+            if cur.fetchone() != 'null':
+                query = f"DELETE FROM public.profile_pic WHERE user_key = \'{key}\'"
+                cur.execute(query)
+                query = f"INSERT INTO public.profile_pic (user_key, image) VALUES (\'{key}\', \'{imgbyte}\')"
+                cur.execute(query)
+                return json.dumps({"status":"check"})
+            else:
+                query = f"INSERT INTO public.profile_pic (user_key, image) VALUES (\'{key}\', \'{imgbyte}\')"
+                cur.execute(query)
+                return json.dumps({"status":"check"})
+    else:
+        return (json.dumps({'status': 'data_error', 'message': 'no such user in tb user'}), 400)
+
+# Метод получения массива байт (фото профиля)
+@app.route('/image/<id>', methods=['GET'])
+def GetImageById(id):
+    with con:
+        cur = con.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+        query = f"SELECT image FROM public.profile_pic WHERE user_key = {id}"
+        cur.execute(query)
+        # объект memoryview в tuple
+        mview = tuple(cur.fetchone().items())
+        # memoryview в bytes
+        new_bin_data=bytes(mview[0][1])
+        #возвращает массив байт
+        return new_bin_data
 
 # Метод получения всех пользователей
 @app.route('/users/all', methods=['GET'])
@@ -247,8 +313,12 @@ def getuser():
 def server():
     global PORT   
     app.run(host="0.0.0.0", port=PORT)
-
+    
 server()
+
+
+
+
 
 # Logout пользователя - делать не нужно, сделаем со стороны клиента
 # Опубликовать это на стенде - делать не нужно, сделаем это, когда будет готова реализация
